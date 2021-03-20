@@ -1,9 +1,31 @@
 #pragma once
 #include <cstdint>
+#include <stdexcept>
+#include <enet.h>
 
 class NetworkHelper {
 public:
 
+    static ENetHost* EnetHostCreateEx(int16_t port) {
+        ENetAddress address{};
+        address.host = ENET_HOST_ANY;
+        address.port = port;
+
+        ENetHost* server = enet_host_create(&address, 32, 2, 0, 0);
+        if(server == nullptr) {
+            throw std::runtime_error("Failed to create host!");
+        }
+
+        return server;
+    }
+
+    static ENetHost* EnetHostCreateEx() {
+        ENetHost* server = enet_host_create(nullptr, 1, 2, 0, 0);
+        if(server == nullptr) {
+            throw std::runtime_error("Failed to create host!");
+        }
+        return server;
+    }
 
     static uint16_t ConvertU16(const uint8_t* data, int64_t off) {
         return data[off] | (data[off + 1] << 8);

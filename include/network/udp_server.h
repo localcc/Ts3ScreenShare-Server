@@ -19,6 +19,8 @@
 #include <network/connected_client.h>
 #include <functional>
 #include <tuple>
+#include <enet.h>
+
 
 class udp_server {
 public:
@@ -29,22 +31,22 @@ public:
     ~udp_server();
 private:
     bool running;
+    std::unique_ptr<ENetHost, decltype(&enet_host_destroy)> server;
 
     //std::unordered_map<sockaddr_in, std::unique_ptr<connected_client>> connectedClients;
+    std::unordered_map<uint64_t, std::unique_ptr<connected_client>> connectedClients;
 
-    static void handle_login(udp_server* server, const uint8_t* data, sockaddr_in sockaddr, int32_t sockaddrSize);
-    static void handle_frame(udp_server* server, const uint8_t* data, sockaddr_in sockaddr, int32_t sockaddrSize);
-    static void handle_start_watch_stream(udp_server* server, const uint8_t* data, sockaddr_in sockaddr, int32_t sockaddrSize);
-    static void handle_stop_watch_stream(udp_server* server, const uint8_t* data, sockaddr_in sockaddr, int32_t sockaddrSize);
-    static void handle_disconnect(udp_server* server, const uint8_t* data, sockaddr_in sockaddr, int32_t sockaddrSize);
+    static void handle_login(udp_server* server, ENetEvent event);
+    static void handle_frame(udp_server* server, ENetEvent event);
+    static void handle_start_watch_stream(udp_server* server, ENetEvent event);
+    static void handle_stop_watch_stream(udp_server* server, ENetEvent event);
+    void handle_disconnect(ENetEvent event);
 
-    const std::unordered_map<uint8_t, std::function<void(udp_server*, const uint8_t*, sockaddr_in, int32_t)>> callbacks = {
+    const std::unordered_map<uint8_t, std::function<void(udp_server*, ENetEvent)>> callbacks = {
         {0, &handle_login},
         {1, &handle_frame},
         {2, &handle_start_watch_stream},
         {3, &handle_stop_watch_stream},
-        {4, &handle_disconnect},
     };
 
-    int32_t sock_fd;
 };

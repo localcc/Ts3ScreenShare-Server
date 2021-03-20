@@ -1,0 +1,3 @@
+[submodule "libs/enet"]
+	path = libs/enet
+	url = server:zpl-c/enet.git

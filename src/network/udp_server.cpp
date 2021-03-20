@@ -3,81 +3,110 @@
 #include <network/NetworkHelper.h>
 
 udp_server::udp_server(int16_t port) :
-    connectedClients() {
-    this->sock_fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-    if(this->sock_fd < 0) {
-        throw std::runtime_error("Failed to create socket!");
-    }
+    server(NetworkHelper::EnetHostCreateEx(port), &enet_host_destroy) {
 
-    sockaddr_in addr{};
-    addr.sin_port = port;
-    addr.sin_family = AF_INET;
-    addr.sin_addr.s_addr = INADDR_ANY;
-
-    if(bind(this->sock_fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) < 0) {
-        throw std::runtime_error("Failed to bind to port!");
-    }
 }
 
 void udp_server::run() {
+    ENetEvent event;
     this->running = true;
+    while(enet_host_service(this->server.get(), &event, 0) >= 0 && this->running) {
+        switch(event.type) {
+            case ENET_EVENT_TYPE_CONNECT: {
 
-    sockaddr_in addr{};
-    uint32_t addrSz = sizeof(addr);
+                break;
+            }
+            case ENET_EVENT_TYPE_RECEIVE: {
+                auto* const packet = event.packet;
+                const auto find = this->callbacks.find(packet->data[0]);
+                if(find != this->callbacks.end()) {
+                    find->second(this, event);
+                }
 
-    auto* szBuf = new uint8_t[4];
-    while(this->running) {
-        std::fill_n(szBuf, 4, 0);
+                enet_packet_destroy(event.packet);
 
-        recvfrom(this->sock_fd, szBuf, 4, MSG_PEEK, reinterpret_cast<sockaddr*>(&addr), &addrSz);
-
-        uint32_t bufSize = NetworkHelper::ConvertU32(szBuf, 0);
-        auto* recvBuf = new uint8_t[bufSize + 4];
-
-        recvfrom(this->sock_fd, recvBuf, bufSize + 4, 0, reinterpret_cast<sockaddr*>(&addr), &addrSz);
-
-        const auto search = this->callbacks.find(recvBuf[5]);
-        if(search != this->callbacks.end())  {
-            search->second(this, recvBuf, addr, addrSz);
+                break;
+            }
+            case ENET_EVENT_TYPE_DISCONNECT: {
+                this->handle_disconnect(event);
+                break;
+            }
+            case ENET_EVENT_TYPE_DISCONNECT_TIMEOUT: {
+                this->handle_disconnect(event);
+                break;
+            }
+            case ENET_EVENT_TYPE_NONE:
+                break;
         }
-
-        delete[] recvBuf;
     }
 }
 
-void udp_server::handle_login(udp_server* server, const uint8_t* data, sockaddr_in sockaddr, int32_t sockaddrSize) {
-    const auto clientId = NetworkHelper::ConvertU16(data, 6);
-    const auto search = server->connectedClients.find(clientUid);
-    if(search != server->connectedClients.end()) return;
+void udp_server::handle_login(udp_server* server, ENetEvent event) {
+    auto* const packet = event.packet;
+    const auto clientID = NetworkHelper::ConvertU16(packet->data, 0);
+    if(server->connectedClients.find(clientID) != server->connectedClients.end()) {
+        return;
+    }
+    event.peer->data = reinterpret_cast<void*>(clientID);
 
-    sockaddr_in idAddr{};
-    std::copy(&sockaddr, &sockaddr + sizeof(sockaddr_in), &idAddr);
-
-    std::unique_ptr<sockaddr_in> copy;
-    std::copy(&sockaddr, &sockaddr + sizeof(sockaddr_in), copy.get());
-
-    std::unique_ptr<connected_client> client = std::make_unique<connected_client>(server->sock_fd, std::move(copy), sockaddrSize);
-
-    server->connectedClients.emplace(idAddr, std::move(client));
+    std::unique_ptr<ENetPeer, decltype(&enet_peer_reset)> peer(event.peer, &enet_peer_reset);
+    server->connectedClients.emplace(clientID, std::make_unique<connected_client>(std::move(peer)));
 }
 
-void udp_server::handle_frame(udp_server* server, const uint8_t* data, sockaddr_in sockaddr, int32_t sockaddrSize) {
-    const auto clientId = NetworkHelper::ConvertU16(data, 6);
+void udp_server::handle_frame(udp_server* server, ENetEvent event) {
+    const auto clientID = static_cast<uint16_t>(reinterpret_cast<uintptr_t>(event.peer->data));
+    const auto client = server->connectedClients.find(clientID);
+    if(client == server->connectedClients.end()) return;
 
-}
 
-void udp_server::handle_start_watch_stream(udp_server* server, const uint8_t* data, sockaddr_in sockaddr, int32_t sockaddrSize) {
 
 }
 
-void udp_server::handle_stop_watch_stream(udp_server* server, const uint8_t* data, sockaddr_in sockaddr, int32_t sockaddrSize) {
+void udp_server::handle_start_watch_stream(udp_server* server, ENetEvent event) {
+    const auto clientID = static_cast<uint16_t>(reinterpret_cast<uintptr_t>(event.peer->data));
+    const auto client = server->connectedClients.find(clientID);
+    if(client == server->connectedClients.end()) return;
 
+    auto* const packet = event.packet;
+    const auto watchedID = NetworkHelper::ConvertU16(packet->data, 0);
+    const auto watchedClient = server->connectedClients.find(watchedID);
+    if(watchedClient == server->connectedClients.end()) {
+        return;
+    }
+
+    client->second->addWatchedByMe(watchedID);
+    watchedClient->second->addWatchingMe(clientID);
 }
 
-void udp_server::handle_disconnect(udp_server* server, const uint8_t* data, sockaddr_in sockaddr, int32_t sockaddrSize) {
+void udp_server::handle_stop_watch_stream(udp_server* server, ENetEvent event) {
+    const auto clientID = static_cast<uint16_t>(reinterpret_cast<uintptr_t>(event.peer->data));
+    const auto client = server->connectedClients.find(clientID);
+    if(client == server->connectedClients.end()) return;
 
+    auto* const packet = event.packet;
+    const auto watchedID = NetworkHelper::ConvertU16(packet->data, 0);
+    const auto watchedClient = server->connectedClients.find(watchedID);
+    if(watchedClient == server->connectedClients.end()) {
+        return;
+    }
+
+    client->second->removeWatchedByMe(watchedID);
+    watchedClient->second->removeWatchingMe(clientID);
+}
+
+void udp_server::handle_disconnect(ENetEvent event) {
+    const auto clientID = static_cast<uint16_t>(reinterpret_cast<uintptr_t>(event.peer->data));
+    const auto client = this->connectedClients.find(clientID);
+    if(client == this->connectedClients.end()) return;
+
+    for(const auto& peer : this->connectedClients) {
+        peer.second->removeWatchedByMe(clientID);
+        peer.second->removeWatchingMe(clientID);
+    }
+
+    this->connectedClients.erase(clientID);
 }
 
 udp_server::~udp_server() {
-    shutdown(this->sock_fd, SHUT_RDWR);
+    this->running = false;
 }
