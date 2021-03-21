@@ -13,6 +13,7 @@
 #include <enet.h>
 #include <memory>
 #include <vector>
+#include <tuple>
 
 class connected_client {
 public:
@@ -26,12 +27,18 @@ public:
     void addWatchedByMe(uint16_t id);
     void removeWatchedByMe(uint16_t id);
 
+    void setResolution(uint32_t width, uint32_t height);
+    std::tuple<uint32_t, uint32_t> getResolution() const;
+
     const std::vector<uint16_t> getWatchingMe() const;
     const std::vector<uint16_t> getWatchedByMe() const;
 
     ~connected_client() = default;
 private:
     std::unique_ptr<ENetPeer, decltype(&enet_peer_reset)> peer;
+
+    uint32_t width;
+    uint32_t height;
 
     std::vector<uint16_t> watching_me;
     std::vector<uint16_t> watched_by_me;

@@ -31,22 +31,18 @@ public:
     ~udp_server();
 private:
     bool running;
-    std::unique_ptr<ENetHost, decltype(&enet_host_destroy)> server;
+    ENetHost* server;
+    //std::unique_ptr<ENetHost, decltype(&enet_host_destroy)> server;
 
     //std::unordered_map<sockaddr_in, std::unique_ptr<connected_client>> connectedClients;
     std::unordered_map<uint64_t, std::unique_ptr<connected_client>> connectedClients;
 
-    static void handle_login(udp_server* server, ENetEvent event);
-    static void handle_frame(udp_server* server, ENetEvent event);
-    static void handle_start_watch_stream(udp_server* server, ENetEvent event);
-    static void handle_stop_watch_stream(udp_server* server, ENetEvent event);
-    void handle_disconnect(ENetEvent event);
 
-    const std::unordered_map<uint8_t, std::function<void(udp_server*, ENetEvent)>> callbacks = {
-        {0, &handle_login},
-        {1, &handle_frame},
-        {2, &handle_start_watch_stream},
-        {3, &handle_stop_watch_stream},
-    };
+    void handle_login(ENetEvent event);
+    void handle_frame(ENetEvent event);
+    void handle_start_watch_stream(ENetEvent event);
+    void handle_stop_watch_stream(ENetEvent event);
+    void handle_start_stream(ENetEvent event);
+    void handle_disconnect(ENetEvent event);
 
 };

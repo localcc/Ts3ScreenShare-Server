@@ -9,7 +9,11 @@ add_subdirectory(${LIBS_DIR})
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
 include_directories(${LIBS_DIR}/enet/include)
 
+
+file(GLOB packets_src include/network/packets/*.h)
+
 add_executable(${PROJECT_NAME} main.cpp
     include/network/udp_server.h src/network/udp_server.cpp
     include/network/connected_client.h src/network/connected_client.cpp
-    include/network/NetworkHelper.h)
+    include/network/NetworkHelper.h
+    ${packets_src})
